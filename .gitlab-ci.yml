@@ -1,0 +1,5 @@
+feedback:
+  script:
+  - run_kate . cspark/data-science-assessment:production
+  tags:
+  - kate2.0
