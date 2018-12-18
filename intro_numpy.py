@@ -1,4 +1,5 @@
 """A set of numpy exercises"""
+import numpy as np
 
 
 def zero_insert(x):
@@ -14,8 +15,12 @@ def zero_insert(x):
     :return: input vector with elements separated by 4 zeros
     :rtype: numpy.array
     """
-
-    raise NotImplementedError
+    zeros = 4
+    size = len(x)
+    for i in range(1, size):
+        index = (i - 1) * zeros + i
+        x = np.insert(x, index, [0]*zeros)
+    return x
 
 
 def return_closest(x, val):
@@ -36,8 +41,7 @@ def return_closest(x, val):
     :rtype: int | float
     :raise ValueError:
     """
-
-    raise NotImplementedError
+    return x[np.abs(x - val).argmin()]
 
 
 def cauchy(x, y):
@@ -59,8 +63,8 @@ def cauchy(x, y):
     :rtype: numpy.array of float
     :raise ValueError:
     """
-
-    raise NotImplementedError
+    double = lambda vec: np.concatenate(vec, vec)
+    return 1 / (double(x).T - double(y))
 
 
 def most_similar(x, v_list):
@@ -79,8 +83,9 @@ def most_similar(x, v_list):
     :return: index of element in list that is closest to x in cosine-sim
     :rtype: int
     """
-
-    raise NotImplementedError
+    similarity = np.dot(v_list, x) / (np.linalg.norm(x, axis=1) *
+                                      np.linalg.norm(y))
+    return v_list[similarity.argmax()]
 
 
 def gradient_descent(x_0, learning_rate, tol):
@@ -107,6 +112,13 @@ def gradient_descent(x_0, learning_rate, tol):
     :rtype: tuple of three float
     """
 
-    raise NotImplementedError
+    return x_0
 
 
+if __name__ == "__main__":
+    """
+    x = np.array([4, 2, 1])
+    print(zero_insert(x))
+    x = np.array([3, 4, 5])
+    print(return_closest(x, 3))
+    """
