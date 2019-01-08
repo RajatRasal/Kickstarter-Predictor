@@ -29,6 +29,7 @@ def train_model():
 
     my_model = Model()
     X_train, y_train = my_model.preprocess_training_data(df)
+    print(f"X_train shape: {X_train.shape}, y_train shape: {y_train.shape}")
     my_model.fit(X_train, y_train)
 
     # Save to pickle
@@ -37,6 +38,7 @@ def train_model():
 
 
 def test_model():
+    print(os.sep.join([DATA_DIR, DATA_FILENAME]))
     df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]), nrows=20)
 
     # Load pickle
