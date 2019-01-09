@@ -10,8 +10,8 @@ from model import KickstarterModel as Model
 DATASET_URL = "https://s3-eu-west-1.amazonaws.com/kate-datasets/kickstarter/train.zip"
 DATA_DIR = "data"
 DATA_FILENAME = "train.zip"
-PICKLE_NAME = 'model.pickle'
-TRAIN_FRAC = 0.8
+PICKLE_NAME = "model.pickle"
+TRAIN_FRAC = 0.95
 
 
 def setup_data():
@@ -67,12 +67,16 @@ def score_model():
     with open(PICKLE_NAME, 'rb') as f:
         my_model = pickle.load(f)
 
-    X_train, y_train = my_model.preprocess_scoring_data(train)
-    X_test, y_test = my_model.preprocess_scoring_data(test)
-    train_score = my_model.score(X_train, y_train)
+    # X_train, y_train = my_model.preprocess_scoring_data(train)
+    # X_test, y_test = my_model.preprocess_scoring_data(test)
+    X_test = test.drop("state", axis=1)
+    y_test = test.state.apply(lambda x: 1 if x == "successful" else 0)
+    print()
+    # train_score = my_model.score(X_train, y_train)
+    # print(X_test.iloc[0, :])
     test_score = my_model.score(X_test, y_test)
     print("### Model Score ###")
-    print(f"Train Accuracy: {train_score}")
+    # print(f"Train Accuracy: {train_score}")
     print(f"Test Accuracy: {test_score}")
 
 

@@ -69,7 +69,7 @@ class KickstarterModel:
             model = Pipeline([
                 ('vect', CountVectorizer(stop_words=stopwords_list, 
                                          analyzer="word",
-                                         ngram_range=ngram_range,
+                                         ngram_range=(1, 4),
                                          token_pattern="[a-zA-Z]{2,}", min_df=1,
                                          strip_accents="ascii")), 
                 ('tfidf', TfidfTransformer()),
@@ -77,10 +77,11 @@ class KickstarterModel:
             ])
             return model
 
-        nlp_models = [(str(i), nlp_model_gen((1, i))) for i in range(2, 5)]
-        self.__nlp_model = VotingClassifier(estimators=nlp_models)
+        # nlp_models = [(str(i), nlp_model_gen((1, i))) for i in range(2, 5)]
+        # self.__nlp_model = VotingClassifier(estimators=nlp_models)
+        self.__nlp_model = nlp_model_gen((1, 4))  # VotingClassifier(estimators=nlp_models)
 
-        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=1000,
+        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=100,
                                                   learning_rate=0.1)
 
         # self.__stacked_model = LogisticRegression(solver='lbfgs')
@@ -108,7 +109,7 @@ class KickstarterModel:
         duration = df_main.deadline - df_main.launched_at
         df_main.loc[:, "duration"] = duration.apply(lambda x: x.days)
 
-        # Get actual category from the JSON in categ
+        # Get actual category from the JSON object in category column.
         def get_category(x):
             category = json.loads(x)["slug"]    
             return pd.Series(category.split("/"))
@@ -173,64 +174,19 @@ class KickstarterModel:
         self.__nlp_model.fit(X_nlp, y_enc)
         self.__model.fit(X_other, y_enc)
 
-        """
-        folds = 2 
-        kfold = KFold(folds, True, 1)
-        preds = [] 
-
-        for i, data in enumerate(kfold.split(range(len(X_fit)))):
-            train, test = data
-
-            # Train the models
-            X_nlp_train = X_nlp.iloc[train]
-            X_other_train = X_other.iloc[train, :]
-            y_enc_train = y.iloc[train]
-
-            self.__nlp_model.fit(X_nlp_train, y_enc_train)
-            self.__model.fit(X_other_train, y_enc_train)
-            
-            # Make predictions using test
-            X_nlp_test = X_nlp.iloc[test]
-            X_other_test = X_other.iloc[test, :]
-
-            pred_nlp = self.__nlp_model.fit(X_nlp_test)
-            pred_other = self.__model.fit(X_other_test)
-
-            # Collate all predictions
-            preds.append(pred_nlp)  # .reshape(-1, 1)
-            preds.append(pred_other)  # .reshape(-1, 1)
-            # preds[:, 2*i] = pred_other.reshape(-1, 1)
-
-        # y_nlp_pred = self.__nlp_model.predict(X_nlp)
-        # y_pred = self.__model.predict(X_other)
-
-        
-        # Merge the 2 arrays together
-        X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
-
-        self.__stacked_model.fit(X_stacked, y_enc) 
-        """
-
     def preprocess_scoring_data(self, df):
-        # print("==============================")
         X, y = self.__preprocess_data(df)
         all_cols = np.load(COLUMNS_FILENAME)
-        # print("all_cols.shape:", all_cols.shape)
-        # print("all_cols:", all_cols)
 
         # Finding all the columns which haven't been produced as a result of 
         # one hot encoding the test data, since the test data will not be as 
         # large as the training data.
         missed_cols = [c for c in all_cols if c not in X.columns]
-        # print("missed_cols:", missed_cols)
-        # print("==============================")
+        print("missed_cols:", len(missed_cols))
 
         # Adding the missed columns to the dataframe.
         for c in missed_cols:
-            # print(c, end=", ")
             X[c] = pd.Series(0, index=X.index)
-        # print()
-        # print(len(X.columns))
         
         # Put columns in the same order as training.
         X_final = X[all_cols]
@@ -244,16 +200,24 @@ class KickstarterModel:
     def predict(self, X):
         X_pred = X.copy()
         X_nlp = X_pred.blurb
+        print(X_nlp.head())
         X_other = X_pred.drop("blurb", axis=1)
 
         y_pred_nlp = self.__nlp_model.predict(X_nlp)
-        y_pred = self.__model.predict(X_other)
-        return (y_pred_nlp, y_pred)
+        # y_pred = self.__model.predict(X_other)
+        return y_pred_nlp  # , y_pred)
 
         # X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
 
         # return self.__stacked_model.predict(X_stacked)
 
     def score(self, X, y):
-        y_pred1, y_pred2 = self.predict(X)
-        return (accuracy_score(y_pred1, y), accuracy_score(y_pred2, y))
+        print("score")
+        # y_pred1, y_pred2 = self.predict(X)
+        y_pred = self.predict(X)
+        print(list(y_pred[0:10]))
+        # print(list(y_pred2[0:10]))
+        print(list(y[0:10]))
+        print()
+        # return (accuracy_score(y_pred, y), accuracy_score(y_pred2, y))
+        return accuracy_score(y_pred, y)  # , accuracy_score(y_pred2, y))
