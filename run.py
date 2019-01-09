@@ -11,6 +11,7 @@ DATASET_URL = "https://s3-eu-west-1.amazonaws.com/kate-datasets/kickstarter/trai
 DATA_DIR = "data"
 DATA_FILENAME = "train.zip"
 PICKLE_NAME = 'model.pickle'
+TRAIN_FRAC = 0.8
 
 
 def setup_data():
@@ -26,6 +27,8 @@ def setup_data():
 
 def train_model():
     df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]))
+    train_size = int(len(df)*TRAIN_FRAC)
+    df = df.iloc[:train_size, :]
 
     my_model = Model()
     X_train, y_train = my_model.preprocess_training_data(df)
@@ -38,8 +41,9 @@ def train_model():
 
 
 def test_model():
-    print(os.sep.join([DATA_DIR, DATA_FILENAME]))
-    df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]), nrows=20)
+    df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]))
+    train_size = int(len(df)*TRAIN_FRAC)
+    df = df.iloc[train_size:, :]
 
     # Load pickle
     with open(PICKLE_NAME, 'rb') as f:
@@ -51,6 +55,25 @@ def test_model():
     print(preds)
 
 
+def score_model():
+    df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]))
+    train_size = int(len(df)*TRAIN_FRAC)
+    train = df.iloc[:train_size, :]
+    test = df.iloc[train_size:, :]
+
+    # Load pickle
+    with open(PICKLE_NAME, 'rb') as f:
+        my_model = pickle.load(f)
+
+    X_train, y_train = my_model.preprocess_scoring_data(train)
+    X_test, y_test = my_model.preprocess_scoring_data(test)
+    train_score = my_model.score(X_train, y_train)
+    test_score = my_model.score(X_test, y_test)
+    print("### Model Score ###")
+    print(f"Train Accuracy: {train_score}")
+    print(f"Test Accuracy: {test_score}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="A command line-tool to manage the project.")
@@ -58,7 +81,7 @@ def main():
         'stage',
         metavar='stage',
         type=str,
-        choices=['setup', 'train', 'test'],
+        choices=['setup', 'train', 'test', 'score'],
         help="Stage to run.")
 
     stage = parser.parse_args().stage
@@ -66,14 +89,15 @@ def main():
     if stage == "setup":
         print("Downloading dataset...")
         setup_data()
-
     elif stage == "train":
         print("Training model...")
         train_model()
-
     elif stage == "test":
         print("Testing model...")
         test_model()
+    elif stage == "score":
+        print("Evaluating model...")
+        score_model()
 
 
 if __name__ == "__main__":
