@@ -31,7 +31,7 @@ def encoding_labels(labels):
     Labels : Pandas Series of labels
     Output : Encoded Pandas Series
     """
-    state_encodings = {v:k for k, v in enumerate(labels.unique())}
+    state_encodings = {v:k for k, v in enumerate(sorted(labels.unique()))}
     return labels.apply(lambda x: state_encodings[x])
 
 
@@ -81,7 +81,7 @@ class KickstarterModel:
         # self.__nlp_model = VotingClassifier(estimators=nlp_models)
         self.__nlp_model = nlp_model_gen((1, 4))  # VotingClassifier(estimators=nlp_models)
 
-        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=100,
+        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=500,
                                                   learning_rate=0.1)
 
         # self.__stacked_model = LogisticRegression(solver='lbfgs')
@@ -182,14 +182,18 @@ class KickstarterModel:
         # one hot encoding the test data, since the test data will not be as 
         # large as the training data.
         missed_cols = [c for c in all_cols if c not in X.columns]
-        print("missed_cols:", len(missed_cols))
+        # print("missed_cols:", len(missed_cols))
 
         # Adding the missed columns to the dataframe.
         for c in missed_cols:
             X[c] = pd.Series(0, index=X.index)
-        
+
+        # print(list(all_cols[0:5]))
+
         # Put columns in the same order as training.
         X_final = X[all_cols]
+
+        # print(list(X_final.columns[0:5]))
 
         # Putting the columns in the same order as training.
         return X_final, y
@@ -200,24 +204,24 @@ class KickstarterModel:
     def predict(self, X):
         X_pred = X.copy()
         X_nlp = X_pred.blurb
-        print(X_nlp.head())
+        # print(X_nlp.head())
         X_other = X_pred.drop("blurb", axis=1)
 
         y_pred_nlp = self.__nlp_model.predict(X_nlp)
-        # y_pred = self.__model.predict(X_other)
-        return y_pred_nlp  # , y_pred)
+        y_pred = self.__model.predict(X_other)
+        return (y_pred_nlp, y_pred)
 
         # X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
 
         # return self.__stacked_model.predict(X_stacked)
 
     def score(self, X, y):
-        print("score")
+        # print("score")
         # y_pred1, y_pred2 = self.predict(X)
-        y_pred = self.predict(X)
-        print(list(y_pred[0:10]))
+        (y_pred_nlp, y_pred) = self.predict(X)
+        # print(list(y_pred[0:10]))
         # print(list(y_pred2[0:10]))
-        print(list(y[0:10]))
-        print()
+        # print(list(y[0:10]))
+        # print()
         # return (accuracy_score(y_pred, y), accuracy_score(y_pred2, y))
-        return accuracy_score(y_pred, y)  # , accuracy_score(y_pred2, y))
+        return (accuracy_score(y_pred_nlp, y), accuracy_score(y_pred, y))
