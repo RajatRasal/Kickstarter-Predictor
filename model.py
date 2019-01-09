@@ -4,15 +4,22 @@ Kickstarter dataset to determine whether a Kickstarter will be successfully
 funded or not.
 """
 import json
-import numpy as np
-import nltk
-import pandas as pd
+import pickle
 from datetime import datetime
+
+import nltk
+import numpy as np
+import pandas as pd
 from nltk.corpus import stopwords
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
+
+COLUMNS_FILENAME = "./.columns.npy" 
 
 
 def encoding_labels(labels):
@@ -63,10 +70,13 @@ class KickstarterModel:
                                      token_pattern="[a-zA-Z]{2,}", min_df=1,
                                      strip_accents="ascii", ngram_range=(1, 4))),
             ('tfidf', TfidfTransformer()),
-            ('clf-svm', LinearSVC(loss="hinge", max_iter=100, random_state=42, 
-                                  tol=1e-10))
+            ('clf-svm', LinearSVC(loss="hinge", max_iter=100, tol=1e-10))
         ])
-        self.__non_text_model = None
+
+        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=100,
+                                                  learning_rate=0.1)
+
+        self.__stacked_model = LogisticRegression(solver='lbfgs')
 
     def __ensemble_data_split(self, df):
         nlp_data = df.blurb
@@ -113,6 +123,15 @@ class KickstarterModel:
         return pd.get_dummies(df_tmp, columns=one_hot_cols)
 
     def preprocess_training_data(self, df):
+        X, y = self.__preprocess_data(df)
+
+        # Finals Columns
+        print("FINAL COLS:", len(X.columns.values))
+        np.save(COLUMNS_FILENAME, X.columns.values)
+
+        return X, y
+
+    def __preprocess_data(self, df):
         # Split the dataframe into 2 separate dataframes
         # Pass the individual dataframes into 2 separate parasing functions
         df_ = drop_empty_cols(df)
@@ -128,26 +147,95 @@ class KickstarterModel:
         # One-hot encoding
         df_clean_oh_encoded = self.__one_hot_encode(df_clean)
 
-        return df_clean_oh_encoded.drop("state", axis=1), df_.state
+        # Features, Labels
+        y = df_.state
+        X = df_clean_oh_encoded.drop("state", axis=1)
 
+        return X, y  
 
     def fit(self, X, y):
         X_fit = X.copy()
         X_nlp = X_fit.blurb
         X_other = X_fit.drop("blurb", axis=1)
+        y_enc = encoding_labels(y)
 
-        y = encoding_labels(y)
+        folds = 2 
+        kfold = KFold(folds, True, 1)
+        preds = [] 
 
-        self.__nlp_model.fit(X_nlp, y)
+        for i, data in enumerate(kfold.split(range(len(X_fit)))):
+            train, test = data
+
+            # Train the models
+            X_nlp_train = X_nlp.iloc[train]
+            X_other_train = X_other.iloc[train, :]
+            y_enc_train = y.iloc[train]
+
+            self.__nlp_model.fit(X_nlp_train, y_enc_train)
+            self.__model.fit(X_other_train, y_enc_train)
+            
+            # Make predictions using test
+            X_nlp_test = X_nlp.iloc[test]
+            X_other_test = X_other.iloc[test, :]
+
+            pred_nlp = self.__nlp_model.fit(X_nlp_test)
+            pred_other = self.__model.fit(X_other_test)
+
+            # Collate all predictions
+            preds.append(pred_nlp)  # .reshape(-1, 1)
+            preds.append(pred_other)  # .reshape(-1, 1)
+            # preds[:, 2*i] = pred_other.reshape(-1, 1)
+
+        # y_nlp_pred = self.__nlp_model.predict(X_nlp)
+        # y_pred = self.__model.predict(X_other)
+        
+        # Merge the 2 arrays together
+        X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
+
+        self.__stacked_model.fit(X_stacked, y_enc) 
+
+    def preprocess_scoring_data(self, df):
+        # print("==============================")
+        X, y = self.__preprocess_data(df)
+        all_cols = np.load(COLUMNS_FILENAME)
+        # print("all_cols.shape:", all_cols.shape)
+        # print("all_cols:", all_cols)
+
+        # Finding all the columns which haven't been produced as a result of 
+        # one hot encoding the test data, since the test data will not be as 
+        # large as the training data.
+        missed_cols = [c for c in all_cols if c not in X.columns]
+        # print("missed_cols:", missed_cols)
+        # print("==============================")
+
+        # Adding the missed columns to the dataframe.
+        for c in missed_cols:
+            # print(c, end=", ")
+            X[c] = pd.Series(0, index=X.index)
+        # print()
+        # print(len(X.columns))
+        
+        # Put columns in the same order as training.
+        X_final = X[all_cols]
+
+        # Putting the columns in the same order as training.
+        return X_final, y
 
     def preprocess_unseen_data(self, df):
-        return self.preprocess_training_data(df)[0]
+        return self.preprocess_scoring_data(df)[0]
 
     def predict(self, X):
         X_pred = X.copy()
         X_nlp = X_pred.blurb
         X_other = X_pred.drop("blurb", axis=1)
-        return self.__nlp_model.predict(X_nlp)
+
+        y_nlp_pred = self.__nlp_model.predict(X_nlp)
+        y_pred = self.__model.predict(X_other)
+
+        X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
+
+        return self.__stacked_model.predict(X_stacked)
 
     def score(self, X, y):
-        return accuracy_score(self.predict(X), y)
+        y_pred = self.predict(X)
+        return accuracy_score(y_pred, y)
