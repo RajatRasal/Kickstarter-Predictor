@@ -59,7 +59,9 @@ def score_model():
     df = pd.read_csv(os.sep.join([DATA_DIR, DATA_FILENAME]))
     train_size = int(len(df)*TRAIN_FRAC)
     train = df.iloc[:train_size, :]
+    print("TRAIN SIZE:", len(train))
     test = df.iloc[train_size:, :]
+    print("TEST SIZE:", len(test))
 
     # Load pickle
     with open(PICKLE_NAME, 'rb') as f:

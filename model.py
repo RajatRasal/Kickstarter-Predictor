@@ -11,7 +11,7 @@ import nltk
 import numpy as np
 import pandas as pd
 from nltk.corpus import stopwords
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
@@ -51,7 +51,7 @@ def drop_empty_cols(df):
     return df_clean.dropna()
 
 
-def unixtimestamp_to_datetime(ts):
+def unixtime_to_datetime(ts):
     """
     Converts UNIX timestamp to Python datetime object.
     """
@@ -65,18 +65,25 @@ class KickstarterModel:
         languages = ['english', 'german', 'french', 'spanish', 'italian']
         stopwords_list = stopwords.words(languages)
 
-        self.__nlp_model = Pipeline([
-            ('vect', CountVectorizer(stop_words=stopwords_list, analyzer="word", 
-                                     token_pattern="[a-zA-Z]{2,}", min_df=1,
-                                     strip_accents="ascii", ngram_range=(1, 4))),
-            ('tfidf', TfidfTransformer()),
-            ('clf-svm', LinearSVC(loss="hinge", max_iter=100, tol=1e-10))
-        ])
+        def nlp_model_gen(ngram_range):
+            model = Pipeline([
+                ('vect', CountVectorizer(stop_words=stopwords_list, 
+                                         analyzer="word",
+                                         ngram_range=ngram_range,
+                                         token_pattern="[a-zA-Z]{2,}", min_df=1,
+                                         strip_accents="ascii")), 
+                ('tfidf', TfidfTransformer()),
+                ('clf', LinearSVC(loss="hinge", max_iter=100, tol=1e-10))
+            ])
+            return model
 
-        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=100,
+        nlp_models = [(str(i), nlp_model_gen((1, i))) for i in range(2, 5)]
+        self.__nlp_model = VotingClassifier(estimators=nlp_models)
+
+        self.__model = GradientBoostingClassifier(max_depth=3, n_estimators=1000,
                                                   learning_rate=0.1)
 
-        self.__stacked_model = LogisticRegression(solver='lbfgs')
+        # self.__stacked_model = LogisticRegression(solver='lbfgs')
 
     def __ensemble_data_split(self, df):
         nlp_data = df.blurb
@@ -95,10 +102,11 @@ class KickstarterModel:
 
         # Unix timestamp to Python datetime
         for col in ["deadline", "launched_at"]:
-            df_main.loc[:, col] = df_main.loc[:, col].apply(unixtimestamp_to_datetime)
+            df_main.loc[:, col] = df_main.loc[:, col].apply(unixtime_to_datetime)
 
         # Duration of Fund Raiser
-        df_main.loc[:, "duration"] = (df_main.deadline - df_main.launched_at).apply(lambda x: x.days)
+        duration = df_main.deadline - df_main.launched_at
+        df_main.loc[:, "duration"] = duration.apply(lambda x: x.days)
 
         # Get actual category from the JSON in categ
         def get_category(x):
@@ -126,7 +134,7 @@ class KickstarterModel:
         X, y = self.__preprocess_data(df)
 
         # Finals Columns
-        print("FINAL COLS:", len(X.columns.values))
+        # print("FINAL COLS:", len(X.columns.values))
         np.save(COLUMNS_FILENAME, X.columns.values)
 
         return X, y
@@ -159,6 +167,13 @@ class KickstarterModel:
         X_other = X_fit.drop("blurb", axis=1)
         y_enc = encoding_labels(y)
 
+        # for _, model in self.__nlp_models:
+        # model.fit(X_nlp, y_enc)
+        
+        self.__nlp_model.fit(X_nlp, y_enc)
+        self.__model.fit(X_other, y_enc)
+
+        """
         folds = 2 
         kfold = KFold(folds, True, 1)
         preds = [] 
@@ -188,11 +203,13 @@ class KickstarterModel:
 
         # y_nlp_pred = self.__nlp_model.predict(X_nlp)
         # y_pred = self.__model.predict(X_other)
+
         
         # Merge the 2 arrays together
         X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
 
         self.__stacked_model.fit(X_stacked, y_enc) 
+        """
 
     def preprocess_scoring_data(self, df):
         # print("==============================")
@@ -229,13 +246,14 @@ class KickstarterModel:
         X_nlp = X_pred.blurb
         X_other = X_pred.drop("blurb", axis=1)
 
-        y_nlp_pred = self.__nlp_model.predict(X_nlp)
+        y_pred_nlp = self.__nlp_model.predict(X_nlp)
         y_pred = self.__model.predict(X_other)
+        return (y_pred_nlp, y_pred)
 
-        X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
+        # X_stacked = np.stack([y_nlp_pred, y_pred], axis=1)
 
-        return self.__stacked_model.predict(X_stacked)
+        # return self.__stacked_model.predict(X_stacked)
 
     def score(self, X, y):
-        y_pred = self.predict(X)
-        return accuracy_score(y_pred, y)
+        y_pred1, y_pred2 = self.predict(X)
+        return (accuracy_score(y_pred1, y), accuracy_score(y_pred2, y))
